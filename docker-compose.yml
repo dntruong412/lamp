@@ -1,0 +1,96 @@
+version: '3.3'
+
+networks:
+    public:
+    backend:
+
+services:
+  nginx:
+    image: nginx:1.15.8
+    volumes:
+      - ./docker/web/nginx/dockerlamp.local.conf:/etc/nginx/conf.d/dockerlamp.local.conf
+      # - ./docker/web/nginx/index.html:/usr/share/nginx/html/index.html
+    ports:
+      - "80:80"
+    depends_on:
+      - apache
+
+  apache:
+    container_name: apache
+    build:
+      context: .
+      dockerfile: ./docker/web/apache2/Dockerfile
+    restart: always
+    ports:
+      - "8001:8001"
+    networks:
+      - public
+      - backend
+    volumes:
+      - ./docker/web/apache2/ports.conf:/etc/apache2/ports.conf
+      - ./docker/web/apache2/vhosts/000-default.conf:/etc/apache2/sites-available/000-default.conf
+      - ./log/apache2:/var/log/apache2
+      - ./src:/var/www/vhosts/lamp
+    depends_on:
+      - db
+      - redis
+
+  phpmyadmin:
+    container_name: phpmyadmin
+    image: phpmyadmin/phpmyadmin:4.8
+    restart: always
+    ports:
+      - 8002:80
+    networks:
+      - public
+      - backend
+    depends_on:
+      - db
+    volumes:
+      - "./log/sessions"
+      - "./docker/phpmyadmin/config.user.inc.php:/etc/phpmyadmin/config.user.inc.php"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+
+  phpredisadmin:
+    container_name: phpredisadmin
+    image: faktiva/php-redis-admin
+    restart: always
+    ports:
+      - 8003:80
+    networks:
+      - public
+      - backend
+    depends_on:
+      - redis
+    environment:
+      - PHPREDMIN_DATABASE_REDIS_0_HOST=redis
+
+  db:
+    container_name: db
+    image: mysql:8.0.14
+    restart: always
+    networks:
+      - backend
+    command: [
+      --default-authentication-plugin=mysql_native_password,
+      --innodb_use_native_aio=0
+    ]
+    volumes:
+      - "./docker/mysql/my.cnf:/etc/mysql/conf.d/my.cnf:rw"
+      - "./docker/mysql/slow_query.cnf:/etc/mysql/conf.d/slow_query.cnf:rw"
+      - "./data/mysql:/var/lib/mysql:rw"
+      - "./log/mysql:/var/log/mysql/:rw"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+
+  redis:
+    container_name: redis
+    image: redis:5.0.3-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - backend
+    volumes:
+      - "./data/redis:/data:rw"
